@@ -1,0 +1,58 @@
+#!/bin/bash
+
+#
+# This requires a list of gateways that get backed up
+# to be stored in $BACKUP_DIR/cp_hosts. The script will
+# then iterate over the list to ensure that backsup exist
+# for each host.
+#
+
+BACKUP_DIR=<directory where backups live>
+LIST=$(cat $BACKUP_DIR/cp_hosts)
+
+# Make sure destination directory exists
+if [[ ! -d "$BACKUP_DIR" ]]; then
+  echo "CRITICAL: $BACKUP_DIR does not exist"
+  exit 2
+fi
+
+# Get failed backups and build a list of all failures
+failed=$(find $BACKUP_DIR -name "failed*")
+if [[ -n $failed ]]; then
+  for i in $failed; do
+    failures+="$(basename $i) "
+  done
+  status_f="failed backups exists (${failures%" "})"
+  rc=2
+fi
+
+# Ensure that a backup is taken each weekend
+# for each host in $LIST
+for line in $LIST; do
+  recent=$(find $BACKUP_DIR -name "${line}-*.tgz" -mtime -8)
+  if [[ -z $recent ]]; then
+    missing+="$line "
+  fi
+done
+
+if [[ -n $missing ]]; then
+  status_r="no recent backup exists (${missing%" "})"
+  rc=2
+fi
+
+# Figure out how we're going to exit
+if [[ $rc -eq 2 ]]; then
+  if [[ -n $status_f && -n $status_r ]]; then
+    echo "CRITICAL: $status_f AND $status_r"
+    exit $rc
+  elif [[ -n $status_f ]]; then
+    echo "CRITICAL: $status_f"
+    exit $rc
+  else
+    echo "CRITICAL: $status_r"
+    exit $rc
+  fi
+else
+  echo "OK: backups are being created successfully"
+  exit 0
+fi
